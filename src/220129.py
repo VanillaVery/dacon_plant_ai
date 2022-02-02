@@ -10,7 +10,7 @@ from tqdm import tqdm
 from glob import glob
 import os
 from sklearn.metrics import f1_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import learning_curve, train_test_split
 import json
 import keras
 #%%
@@ -26,9 +26,8 @@ number =os.listdir(path)
 for i in range(0,10):
     with open((path+'/{}'.format(number[i])+'/{}.json'.format(number[i])).replace("\\",'/')) as f:
         sample_json.append(json.load(f))
-
+#%%
 #데이터를 둘러보자~!
-
 plt.imshow(cv2.cvtColor(sample_image[1], cv2.COLOR_BGR2RGB))
 plt.show()
 
@@ -58,7 +57,7 @@ for part_point in part_points:
     )
 plt.imshow(img)
 plt.show()
-
+#%%
 #환경데이터 통계량을 계산하자고 하네요 응 다베꼇어
 
 # 분석에 사용할 feature 선택
@@ -118,7 +117,7 @@ list(label_description.items())[:10]
 
 label_encoder = {key:idx for idx, key in enumerate(label_description)}
 label_decoder = {val:key for key, val in label_encoder.items()}
-
+#%%
 ################개발구역 조심조심####################
 #csv
 
@@ -140,7 +139,7 @@ def csv_trans(path,file_name):
     # transpose to sequential data
     csv_feature = pad.T
     return csv_feature
-
+#%%
 #jpg
 def image_trans(path,file_name):
 
@@ -165,7 +164,7 @@ for i in tqdm(range(5767)):
 
 imgs=np.array(imgs)
 imgs.shape
-
+#%%
 # batch_size = 256
 # class_n = len(label_encoder)
 # learning_rate = 1e-4
@@ -176,26 +175,24 @@ imgs.shape
 # epochs = 10
 # vision_pretrain = True
 # save_path = 'best_model.h5'
-
+#%%
 #이해는 다음에 하는 것으루 하자 따흐흑바흐흑 #아니다 이해중
 
 #모델링을 하자!!! 으아아아아아악!!!!!!
 IMG_SIZE = 224
 
-
 num_crop = 6
 num_disease = 35
 num_risk = 4
-
-
+#%%
 # define two inputs layers
 img_input = tf.keras.layers.Input(shape=[224,224,3], name="image")
 csv_input = tf.keras.layers.Input(shape=[9,144], name="csv")
 
 # define layers for image data
 x1=keras.applications.resnet.ResNet50(include_top=False,
-                                   weights='imagenet', input_tensor=img_input,
-                                   input_shape=[224,224,3], pooling=None, classes=1000)
+                                   weights='imagenet',
+                                   input_shape=[224,224,3])
 x1.trainable=False
 x1_tensor=x1(img_input*255)
 x1_tensor=tf.reshape(x1_tensor,shape=[-1,49,2048],name='reshape')
@@ -205,7 +202,6 @@ x1_tensor=tf.keras.layers.Dense(32)(x1_tensor)
 x2_tensor=keras.layers.LSTM(20, return_sequences=True)(csv_input)
 x2_tensor=keras.layers.LSTM(20, return_sequences=True)(x2_tensor)
 x2_tensor=keras.layers.TimeDistributed(keras.layers.Dense(32))(x2_tensor)
-
 
 # merge layers
 x = tf.keras.layers.concatenate([x1_tensor,x2_tensor],axis=1, name="concat_csv_img")
@@ -222,12 +218,12 @@ model=keras.Model(
 
 # make model with 2 inputs and 1 output
 
-model.compile(optimizer='adam',
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
               loss=[keras.losses.SparseCategoricalCrossentropy(),
                     keras.losses.SparseCategoricalCrossentropy(),
                     keras.losses.SparseCategoricalCrossentropy()]
               )
-
+#%%
 #############################
 #train
 img_data=imgs
@@ -257,7 +253,7 @@ def replace_with_dict(ar, dic):
     return v[sidx[np.searchsorted(k,ar,sorter=sidx)]]
 
 
-crop_targets=np.array(pd.read_csv('train.csv')['crop'])-1#0부터 시작하게
+crop_targets=np.array(pd.read_csv('train.csv')['crop']) - 1 #0부터 시작하게
 disease_targets=np.array(replace_with_dict(np.array(pd.read_csv('train.csv')['disease']),disease_dict))
 risk_targets=np.array(pd.read_csv('train.csv')['risk'])
 
@@ -266,13 +262,12 @@ crop_targets=tf.convert_to_tensor(crop_targets,dtype=tf.float32)
 disease_targets=tf.convert_to_tensor(disease_targets,dtype=tf.float32)
 risk_targets=tf.convert_to_tensor(risk_targets,dtype=tf.float32)
 
-
 #convert input to tensor
 img_data=tf.convert_to_tensor(np.asarray(imgs),dtype=tf.float32)
 img_data=tf.reshape(img_data,shape=[5767,224,224,3])
 
 csv_data=tf.convert_to_tensor(np.asarray(csv_features),dtype=tf.float32)
-
+#%%
 model.fit(
     [img_data,csv_data],
     [crop_targets ,disease_targets ,risk_targets],
@@ -280,7 +275,7 @@ model.fit(
     batch_size=256,
     validation_split=0.2
 )
-
+#%%
 #test
 
 # del imgs
@@ -289,7 +284,7 @@ model.fit(
 #메모리 오류났다.. 일단 csv 랑 model 저장하자
 model.save('220201model.h5')#모델저장
 model = tf.keras.models.load_model('220201model.h5')
-#
+#%%
 
 path_test='test/test'
 number_test =os.listdir(path_test)
@@ -351,3 +346,4 @@ for k in tqdm(range(51906)):
 #세개를 잇고 익스포트
 #아니다 그건 엑셀로 하자 ㅠ
 result_df.to_csv("pred_label220201.csv")
+#%%
